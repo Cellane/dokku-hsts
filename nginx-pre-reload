@@ -1,0 +1,51 @@
+#!/bin/bash
+
+set -eo pipefail; [[ $DOKKU_TRACE ]] && set -x
+
+source "$PLUGIN_CORE_AVAILABLE_PATH/common/functions"
+source "$PLUGIN_CORE_AVAILABLE_PATH/config/functions"
+source "$PLUGIN_CORE_AVAILABLE_PATH/nginx-vhosts/functions"
+
+app="$1"; verify_app_name "$app"
+
+eval "$(config_export global)"
+eval "$(config_export app "$app")"
+
+hsts_enabled="${HSTS_ENABLED:-false}"
+hsts_max_age="${HSTS_MAX_AGE:-31536000}"
+hsts_include_subdomains="${HSTS_INCLUDE_SUBDOMAINS:-false}"
+
+CONFIG_FOLDER="$DOKKU_ROOT/$app/nginx.conf.d"
+CONFIG_FILE="$CONFIG_FOLDER/hsts.conf"
+[[ -d "$CONFIG_FOLDER" ]] || mkdir "$CONFIG_FOLDER"
+
+if [ "$hsts_enabled" = "true" ]; then
+	header="max-age=$hsts_max_age"
+
+	if [ "$hsts_include_subdomains" = "true" ]; then
+		header+="; includeSubdomains"
+	fi
+
+	dokku_log_info1 "Adding HSTS configuration"
+
+	cat > "$CONFIG_FILE" <<- EOM
+		set \$hsts "";
+
+		if (\$https = "on") {
+		    set \$hsts "$header";
+		}
+
+		add_header Strict-Transport-Security "\$hsts" always;
+	EOM
+
+	chown dokku:dokku "$CONFIG_FILE"
+else
+	if [[ -f "$CONFIG_FILE" ]]; then
+		dokku_log_info1 "Removing HSTS configuration"
+
+		rm "$CONFIG_FILE"
+	fi
+fi
+
+restart_nginx
+

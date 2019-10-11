@@ -1,0 +1,4 @@
+[plugin]
+description = "Plugin for managing HSTS header"
+vesion = "0.1.0"
+[plugin.config]
